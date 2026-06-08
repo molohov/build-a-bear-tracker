@@ -22,6 +22,11 @@ interface MediaWikiApi {
         @Query("rvprop") rvProp: String? = null,
         @Query("rvslots") rvSlots: String? = null,
         @Query("cllimit") clLimit: Int? = null,
+        @Query("piprop") piProp: String? = null,
+        @Query("pithumbsize") piThumbSize: Int? = null,
+        @Query("iiprop") iiProp: String? = null,
+        @Query("iiurlwidth") iiUrlWidth: Int? = null,
+        @Query("redirects") redirects: Int? = null,
         @Query("format") format: String = "json",
     ): WikiQueryResponse
 }

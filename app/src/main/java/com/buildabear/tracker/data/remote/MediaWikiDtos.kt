@@ -15,6 +15,13 @@ data class WikiQuery(
     val allpages: List<WikiPageRef>? = null,
     val pages: Map<String, WikiPageDetail>? = null,
     val categorymembers: List<WikiPageRef>? = null,
+    val redirects: List<WikiRedirect>? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class WikiRedirect(
+    val from: String,
+    val to: String,
 )
 
 @JsonClass(generateAdapter = true)
@@ -36,6 +43,19 @@ data class WikiPageDetail(
     val title: String,
     val revisions: List<WikiRevision>? = null,
     val categories: List<WikiCategory>? = null,
+    val thumbnail: WikiThumbnail? = null,
+    val imageinfo: List<WikiImageInfo>? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class WikiThumbnail(
+    val source: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class WikiImageInfo(
+    val url: String? = null,
+    val thumburl: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

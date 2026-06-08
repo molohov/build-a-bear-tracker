@@ -1,0 +1,135 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Android: Ensure Emulator",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/.vscode/ensure-emulator.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ANDROID_HOME": "${env:LOCALAPPDATA}\\Android\\Sdk",
+          "ANDROID_SDK_ROOT": "${env:LOCALAPPDATA}\\Android\\Sdk"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "Android: Install Debug",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["installDebug"],
+      "windows": {
+        "command": ".\\gradlew.bat"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr",
+          "ANDROID_HOME": "${env:LOCALAPPDATA}\\Android\\Sdk",
+          "ANDROID_SDK_ROOT": "${env:LOCALAPPDATA}\\Android\\Sdk"
+        }
+      },
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "Android: Launch App",
+      "type": "shell",
+      "command": "adb",
+      "args": [
+        "shell",
+        "am",
+        "start",
+        "-n",
+        "com.buildabear.tracker/.MainActivity"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ANDROID_HOME": "${env:LOCALAPPDATA}\\Android\\Sdk",
+          "PATH": "${env:LOCALAPPDATA}\\Android\\Sdk\\platform-tools;${env:PATH}"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "Android: Run on Emulator",
+      "dependsOn": [
+        "Android: Ensure Emulator",
+        "Android: Install Debug",
+        "Android: Launch App"
+      ],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: Build Debug APK",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["assembleDebug"],
+      "windows": {
+        "command": ".\\gradlew.bat"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr",
+          "ANDROID_HOME": "${env:LOCALAPPDATA}\\Android\\Sdk",
+          "ANDROID_SDK_ROOT": "${env:LOCALAPPDATA}\\Android\\Sdk"
+        }
+      },
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "Android: List Devices",
+      "type": "shell",
+      "command": "adb",
+      "args": ["devices", "-l"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ANDROID_HOME": "${env:LOCALAPPDATA}\\Android\\Sdk",
+          "PATH": "${env:LOCALAPPDATA}\\Android\\Sdk\\platform-tools;${env:PATH}"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "showReuseMessage": false
+      }
+    }
+  ]
+}

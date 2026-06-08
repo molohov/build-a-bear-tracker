@@ -108,11 +108,11 @@ class BearListViewModel @Inject constructor(
     fun refreshCatalog() {
         isRefreshing.value = true
         val request = OneTimeWorkRequestBuilder<CatalogImportWorker>()
-            .setInputData(workDataOf(CatalogImportWorker.KEY_MAX_PAGES to 100))
+            .setInputData(workDataOf(CatalogImportWorker.KEY_MAX_PAGES to 1500))
             .build()
         workManager.enqueueUniqueWork(
             CatalogImportWorker.WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             request,
         )
         viewModelScope.launch {

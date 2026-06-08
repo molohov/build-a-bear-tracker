@@ -75,11 +75,11 @@ class SettingsViewModel @Inject constructor(
 
     fun syncCatalog() {
         val request = OneTimeWorkRequestBuilder<CatalogImportWorker>()
-            .setInputData(workDataOf(CatalogImportWorker.KEY_MAX_PAGES to 200))
+            .setInputData(workDataOf(CatalogImportWorker.KEY_MAX_PAGES to 1500))
             .build()
         workManager.enqueueUniqueWork(
             CatalogImportWorker.WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             request,
         )
         _uiState.update { it.copy(message = "Sync started in background") }

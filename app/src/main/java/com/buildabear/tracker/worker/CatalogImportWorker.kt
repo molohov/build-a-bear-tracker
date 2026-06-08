@@ -17,7 +17,7 @@ class CatalogImportWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         return try {
             val result = importRepository.importFromWiki(
-                maxPages = inputData.getInt(KEY_MAX_PAGES, 200),
+                maxPages = inputData.getInt(KEY_MAX_PAGES, 1500),
             )
             if (result.errors.isNotEmpty() && result.pagesFetched == 0) {
                 Result.failure()

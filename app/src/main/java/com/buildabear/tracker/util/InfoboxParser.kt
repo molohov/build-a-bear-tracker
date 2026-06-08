@@ -8,31 +8,87 @@ object InfoboxParser {
 
     fun parse(wikitext: String): Map<String, String> {
         val match = infoboxRegex.find(wikitext) ?: return emptyMap()
-        val body = match.groupValues[1]
+        val body = match.groupValues[1].trim()
         val fields = mutableMapOf<String, String>()
-        val lines = body.split("\n")
-        for (line in lines) {
-            val trimmed = line.trim().removePrefix("|")
+
+        if (!body.contains('\n')) {
+            body.removePrefix("|").split("|").forEach { segment ->
+                putFieldSegment(segment.trim(), fields)
+            }
+            return fields
+        }
+
+        var currentKey: String? = null
+        for (line in body.split("\n")) {
+            val trimmed = line.trim().removePrefix("|").trim()
+            if (trimmed.isEmpty()) continue
             val eqIndex = trimmed.indexOf('=')
-            if (eqIndex <= 0) continue
-            val key = trimmed.substring(0, eqIndex).trim().lowercase()
-            val value = trimmed.substring(eqIndex + 1).trim()
-            if (key.isNotEmpty() && value.isNotEmpty()) {
-                fields[key] = value
+            val keyCandidate = if (eqIndex > 0) trimmed.substring(0, eqIndex).trim() else ""
+            val looksLikeNewField = eqIndex > 0 && keyCandidate.all { it.isLetterOrDigit() || it == '_' }
+
+            if (looksLikeNewField) {
+                currentKey = keyCandidate.lowercase()
+                fields[currentKey] = trimmed.substring(eqIndex + 1).trim()
+            } else if (currentKey != null) {
+                fields[currentKey] = fields.getValue(currentKey) + "\n" + trimmed
             }
         }
         return fields
     }
 
-    fun extractImageUrls(fields: Map<String, String>, pageTitle: String): List<String> {
-        val imageField = fields["image1"] ?: fields["image"] ?: return emptyList()
-        val fileNames = imageField.split("\n")
-            .map { it.substringBefore("|").trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("http") }
-        return fileNames.map { fileName ->
-            val normalized = fileName.replace(' ', '_')
-            "https://static.wikia.nocookie.net/buildabear/images/${normalized.substring(0, 1).lowercase()}/${normalized.substring(0, 2).lowercase()}/$normalized/revision/latest/scale-to-width-down/400"
+    private fun putFieldSegment(segment: String, fields: MutableMap<String, String>) {
+        val eqIndex = segment.indexOf('=')
+        if (eqIndex <= 0) return
+        val key = segment.substring(0, eqIndex).trim().lowercase()
+        val value = segment.substring(eqIndex + 1).trim()
+        if (key.isNotEmpty() && value.isNotEmpty()) {
+            fields[key] = value
         }
+    }
+
+    fun extractImageFileNames(fields: Map<String, String>): List<String> {
+        val imageField = fields["image1"] ?: fields["image"] ?: return emptyList()
+        return parseImageFieldContent(imageField)
+    }
+
+    fun extractImageFileNamesFromWikitext(wikitext: String): List<String> {
+        val fromInfobox = extractImageFileNames(parse(wikitext))
+        if (fromInfobox.isNotEmpty()) return fromInfobox
+
+        val galleryMatch = Regex("""<gallery>(.*?)</gallery>""", RegexOption.DOT_MATCHES_ALL)
+            .find(wikitext)
+        if (galleryMatch != null) {
+            val fromGallery = parseImageFieldContent(galleryMatch.groupValues[1])
+            if (fromGallery.isNotEmpty()) return fromGallery
+        }
+
+        return Regex("""\[\[File:([^\]|]+)""", RegexOption.IGNORE_CASE)
+            .findAll(wikitext)
+            .map { it.groupValues[1].trim() }
+            .filter { it.contains('.') }
+            .distinct()
+            .toList()
+    }
+
+    private fun parseImageFieldContent(content: String): List<String> {
+        val galleryMatch = Regex("""<gallery>(.*?)</gallery>""", RegexOption.DOT_MATCHES_ALL)
+            .find(content)
+        val body = galleryMatch?.groupValues?.get(1) ?: content
+
+        return body.split("\n")
+            .map { line ->
+                line.trim()
+                    .substringBefore("|")
+                    .removePrefix("File:")
+                    .removePrefix("Image:")
+                    .trim()
+            }
+            .filter { name ->
+                name.isNotEmpty() &&
+                    !name.startsWith("http") &&
+                    !name.startsWith("<") &&
+                    name.contains('.')
+            }
     }
 
     fun mapToBearFields(
@@ -41,7 +97,6 @@ object InfoboxParser {
         pageId: Int,
         categories: List<String>,
     ): ParsedBear {
-        val imageUrls = extractImageUrls(fields, pageTitle)
         val availableRaw = fields["available"]?.lowercase()
         return ParsedBear(
             externalId = pageId.toString(),
@@ -59,7 +114,7 @@ object InfoboxParser {
                 "no", "false" -> false
                 else -> null
             },
-            imageUrls = imageUrls,
+            imageUrls = emptyList(),
             sourceUrl = "https://buildabear.fandom.com/wiki/${pageTitle.replace(' ', '_')}",
             categories = categories,
             extraMetadataJson = null,

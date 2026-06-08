@@ -34,3 +34,7 @@ Kotlin, Jetpack Compose, Room, Hilt, Retrofit, WorkManager, Coil
 ## Data
 
 Catalog metadata is sourced from the Fandom wiki (CC-BY-SA). Collection tags and custom entries are stored locally on-device.
+
+## Plan
+
+See [docs/PLAN.md](docs/PLAN.md) for the full implementation plan and architecture.

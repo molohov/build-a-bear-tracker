@@ -20,6 +20,9 @@ interface BearDao {
     @Query("SELECT * FROM bears WHERE externalId = :externalId AND sourceType = 'CATALOG' LIMIT 1")
     suspend fun getCatalogBearByExternalId(externalId: String): BearEntity?
 
+    @Query("SELECT * FROM bears WHERE name = :name AND sourceType = 'CATALOG' LIMIT 1")
+    suspend fun getCatalogBearByName(name: String): BearEntity?
+
     @Query("SELECT DISTINCT furColor FROM bears WHERE furColor IS NOT NULL AND furColor != '' ORDER BY furColor")
     suspend fun getDistinctFurColors(): List<String>
 

@@ -6,9 +6,11 @@ import com.buildabear.tracker.data.local.entity.BearCategoryEntity
 import com.buildabear.tracker.data.local.entity.BearEntity
 import com.buildabear.tracker.data.local.entity.ImportRunEntity
 import com.buildabear.tracker.data.local.encodeImageUrls
+import com.buildabear.tracker.data.remote.WikiPageDetail
 import com.buildabear.tracker.data.remote.MediaWikiApi
 import com.buildabear.tracker.domain.model.SourceType
 import com.buildabear.tracker.util.InfoboxParser
+import com.buildabear.tracker.util.ParsedBear
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.delay
 import java.util.UUID
@@ -84,18 +86,29 @@ class ImportRepository @Inject constructor(
             titles = titlesParam,
             rvProp = "content",
             rvSlots = "main",
+            redirects = 1,
         )
         val categoryResponse = mediaWikiApi.queryPages(
             prop = "categories",
             titles = titlesParam,
             clLimit = 50,
+            redirects = 1,
         )
 
         val contentPages = contentResponse.query?.pages.orEmpty()
         val categoryPages = categoryResponse.query?.pages.orEmpty()
 
-        val entities = mutableListOf<BearEntity>()
-        val categories = mutableListOf<BearCategoryEntity>()
+        data class PageImportData(
+            val page: WikiPageDetail,
+            val wikitext: String,
+            val categories: List<String>,
+            val parsed: ParsedBear?,
+            val imageFileNames: List<String>,
+        )
+
+        val pageData = mutableListOf<PageImportData>()
+        val imageFileNames = mutableSetOf<String>()
+        val pagesNeedingThumbnail = mutableListOf<String>()
 
         for ((_, page) in contentPages) {
             if (page.pageid <= 0) continue
@@ -107,33 +120,67 @@ class ImportRepository @Inject constructor(
                 .filter { !it.startsWith("Browse") && !it.contains("Stub") }
 
             val fields = InfoboxParser.parse(wikitext)
+            val fileNames = InfoboxParser.extractImageFileNamesFromWikitext(wikitext)
             val parsed = if (fields.isNotEmpty()) {
                 InfoboxParser.mapToBearFields(fields, page.title, page.pageid, rawCategories)
             } else {
                 null
             }
 
+            if (fileNames.isEmpty()) {
+                pagesNeedingThumbnail.add(page.title)
+            } else {
+                imageFileNames.addAll(fileNames)
+            }
+
+            pageData.add(
+                PageImportData(
+                    page = page,
+                    wikitext = wikitext,
+                    categories = rawCategories,
+                    parsed = parsed,
+                    imageFileNames = fileNames,
+                ),
+            )
+        }
+
+        val imageUrlByFile = resolveImageUrls(imageFileNames)
+        val thumbnailByPage = resolvePageThumbnails(pagesNeedingThumbnail)
+
+        val entities = mutableListOf<BearEntity>()
+        val categories = mutableListOf<BearCategoryEntity>()
+
+        for (data in pageData) {
+            val page = data.page
+            val imageUrls = resolvePageImageUrls(
+                fileNames = data.imageFileNames,
+                imageUrlByFile = imageUrlByFile,
+                pageTitle = page.title,
+                thumbnailByPage = thumbnailByPage,
+            )
+
             val existing = bearDao.getCatalogBearByExternalId(page.pageid.toString())
+                ?: bearDao.getCatalogBearByName(page.title)
             val id = existing?.id ?: UUID.randomUUID().toString()
             val now = System.currentTimeMillis()
 
-            val entity = if (parsed != null) {
+            val entity = if (data.parsed != null) {
                 BearEntity(
                     id = id,
                     sourceType = SourceType.CATALOG.name,
-                    externalId = parsed.externalId,
-                    name = parsed.name,
-                    description = parsed.description,
-                    yearReleased = parsed.yearReleased,
-                    furColor = parsed.furColor,
-                    eyeColor = parsed.eyeColor,
-                    height = parsed.height,
-                    weight = parsed.weight,
-                    sku = parsed.sku,
-                    price = parsed.price,
-                    available = parsed.available,
-                    imageUrlsJson = encodeImageUrls(parsed.imageUrls, moshi),
-                    sourceUrl = parsed.sourceUrl,
+                    externalId = data.parsed.externalId,
+                    name = data.parsed.name,
+                    description = data.parsed.description,
+                    yearReleased = data.parsed.yearReleased,
+                    furColor = data.parsed.furColor,
+                    eyeColor = data.parsed.eyeColor,
+                    height = data.parsed.height,
+                    weight = data.parsed.weight,
+                    sku = data.parsed.sku,
+                    price = data.parsed.price,
+                    available = data.parsed.available,
+                    imageUrlsJson = encodeImageUrls(imageUrls, moshi),
+                    sourceUrl = data.parsed.sourceUrl,
                     sourceName = "fandom",
                     importedAt = now,
                     updatedAt = now,
@@ -145,7 +192,7 @@ class ImportRepository @Inject constructor(
                     sourceType = SourceType.CATALOG.name,
                     externalId = page.pageid.toString(),
                     name = page.title,
-                    imageUrlsJson = "[]",
+                    imageUrlsJson = encodeImageUrls(imageUrls, moshi),
                     sourceUrl = "https://buildabear.fandom.com/wiki/${page.title.replace(' ', '_')}",
                     sourceName = "fandom",
                     importedAt = now,
@@ -154,13 +201,73 @@ class ImportRepository @Inject constructor(
                 )
             }
             entities.add(entity)
-            categories.addAll(rawCategories.map { BearCategoryEntity(id, it) })
+            categories.addAll(data.categories.map { BearCategoryEntity(id, it) })
         }
 
         if (entities.isNotEmpty()) {
             bearDao.upsertBears(entities)
             bearDao.upsertCategories(categories.distinctBy { it.bearId to it.category })
         }
+    }
+
+    private suspend fun resolveImageUrls(fileNames: Collection<String>): Map<String, String> {
+        if (fileNames.isEmpty()) return emptyMap()
+        val urls = mutableMapOf<String, String>()
+        fileNames.distinct().chunked(50).forEach { chunk ->
+            val titles = chunk.joinToString("|") { "File:$it" }
+            val response = mediaWikiApi.queryPages(
+                prop = "imageinfo",
+                titles = titles,
+                iiProp = "url",
+                iiUrlWidth = 400,
+            )
+            for ((_, page) in response.query?.pages.orEmpty()) {
+                val fileName = page.title.removePrefix("File:").trim()
+                val imageUrl = page.imageinfo?.firstOrNull()?.thumburl
+                    ?: page.imageinfo?.firstOrNull()?.url
+                if (imageUrl != null) {
+                    urls[fileName] = imageUrl
+                }
+            }
+        }
+        return urls
+    }
+
+    private suspend fun resolvePageThumbnails(pageTitles: List<String>): Map<String, String> {
+        if (pageTitles.isEmpty()) return emptyMap()
+        val thumbnails = mutableMapOf<String, String>()
+        pageTitles.distinct().chunked(50).forEach { chunk ->
+            val titles = chunk.joinToString("|")
+            val response = mediaWikiApi.queryPages(
+                prop = "pageimages",
+                titles = titles,
+                piProp = "thumbnail",
+                piThumbSize = 400,
+                redirects = 1,
+            )
+            val redirects = response.query?.redirects.orEmpty().associate { it.from to it.to }
+            for ((_, page) in response.query?.pages.orEmpty()) {
+                val imageUrl = page.thumbnail?.source ?: continue
+                thumbnails[page.title] = imageUrl
+                redirects.filterValues { it == page.title }.keys.forEach { fromTitle ->
+                    thumbnails[fromTitle] = imageUrl
+                }
+            }
+        }
+        return thumbnails
+    }
+
+    private fun resolvePageImageUrls(
+        fileNames: List<String>,
+        imageUrlByFile: Map<String, String>,
+        pageTitle: String,
+        thumbnailByPage: Map<String, String>,
+    ): List<String> {
+        for (fileName in fileNames) {
+            imageUrlByFile[fileName]?.let { return listOf(it) }
+        }
+        thumbnailByPage[pageTitle]?.let { return listOf(it) }
+        return emptyList()
     }
 
     suspend fun importSeedBears(seedBears: List<SeedBear>) {
