@@ -25,6 +25,9 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
       - name: Decode release keystore
         run: |
           mkdir -p keystore
