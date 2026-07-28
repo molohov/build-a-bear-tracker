@@ -24,6 +24,9 @@ Thumbs.db
 # Secrets
 *.keystore
 *.jks
+keystore.properties
+keystore/
+.release-secrets.json
 
 # Logs
 *.log
